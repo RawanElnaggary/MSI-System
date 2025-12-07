@@ -1,1 +1,1 @@
-# MSI-System---ML-Project
+# An Automated Material Stream Identification (MSI) System
