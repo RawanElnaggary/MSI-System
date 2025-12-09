@@ -83,7 +83,7 @@ if __name__ == "__main__":
     # print("Scaled X shape:", X_scaled.shape)
 
     # Save to files
-    np.save("xFeatures.npy", XScaled)
-    np.save("yLabels.npy", Y)
+    np.save("XFeatures.npy", XScaled)
+    np.save("YLabels.npy", Y)
 
     # print("Features and labels saved: X_scaled.npy, y.npy")
