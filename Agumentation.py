@@ -1,9 +1,18 @@
+import math
 import os
 import shutil
 from PIL import Image
+import random
 from keras_preprocessing.image import ImageDataGenerator
 from keras_preprocessing.image import img_to_array, load_img
-import random
+
+# To get the needed augmented images per class
+def round_up (n):
+    if n < 10:
+        return 10
+    digits = len(str(n))
+    base = 10 ** (digits - 1)
+    return math.ceil(n / base) * base
 
 initialDataset = "InitialDataset"
 finalDataset = "FinalDataset"
@@ -13,8 +22,12 @@ if os.path.exists(finalDataset):
     shutil.rmtree(finalDataset)
 os.mkdir(finalDataset)
 
+# To store the number of good images in each folder
+foldersImgsCount = {}
+
 # Loop through the initial folder to copy uncorrupted images to the final folder
 for folder in os.listdir(initialDataset):
+    imgsCount = 0
     initialFolder = os.path.join(initialDataset, folder)
     if not os.path.isdir(initialFolder):
         continue
@@ -31,8 +44,46 @@ for folder in os.listdir(initialDataset):
                 img.load()
             # If image is corrupted don't copy it
             shutil.copy(initialFile, finalFolder)
+            imgsCount += 1
         except Exception:
             continue
+
+    foldersImgsCount[folder] = imgsCount
+
+# To calculate the needed images in each folder later
+totalTrainingImgs = 0
+
+# Split data into 80% in a training folder and 20% in a testing folder
+for folder in os.listdir(finalDataset):
+    currentFolder = os.path.join(finalDataset, folder)
+
+    trainImgsCount = math.floor(foldersImgsCount[folder] * 0.8)
+    foldersImgsCount[folder] = trainImgsCount
+    totalTrainingImgs += trainImgsCount
+    trainingImgs = random.sample(os.listdir(currentFolder), trainImgsCount)
+
+    trainFolder = os.path.join(currentFolder, "Train")
+    os.makedirs(trainFolder, exist_ok=True)
+    for imgName in trainingImgs:
+        imgPath = os.path.join(currentFolder, imgName)
+        shutil.move(imgPath, trainFolder)
+
+    testFolder = os.path.join(currentFolder, "Test")
+    os.makedirs(testFolder, exist_ok=True)
+    for imgName in os.listdir(currentFolder):
+        imgPath = os.path.join(currentFolder, imgName)
+        if os.path.isdir(imgPath):
+            continue
+        shutil.move(imgPath, testFolder)
+
+# Get the number of images needed in each training folder
+totalTrainingImgsNeeded = totalTrainingImgs + math.ceil(totalTrainingImgs * 0.4) # Target is at least 40% more
+imgsPerClass = math.ceil(totalTrainingImgsNeeded / len(foldersImgsCount))
+
+if max(foldersImgsCount.values()) > imgsPerClass:
+    targetCount = round_up(max(foldersImgsCount.values()))
+else:
+    targetCount = round_up(imgsPerClass)
 
 # Keras augmentation settings
 imgAug = ImageDataGenerator (
@@ -46,22 +97,22 @@ imgAug = ImageDataGenerator (
     fill_mode = "nearest"
 )
 
-# Apply augmentation for each folder till it reaches the maximum size needed
+# Apply augmentation for each training folder till it reaches the maximum size needed
 for folder in os.listdir(finalDataset):
-    classFolder = os.path.join(finalDataset, folder)
+    classFolder = os.path.join(finalDataset, folder, "Train")
     if not os.path.isdir(classFolder):
         continue
 
     images = os.listdir(classFolder)
     imagesCount = len(images)
-    neededImagesCount = 500 - imagesCount
+    neededImagesCount = targetCount - imagesCount
 
     if neededImagesCount <= 0:
         continue
 
     # If the needed images count don't exceed the images count in the folder then augment random unrepeated images
     if neededImagesCount <= imagesCount:
-        chosenImages = random.sample(images, k = neededImagesCount)
+        chosenImages = random.sample(images, neededImagesCount)
         for imgName in chosenImages:
             imgPath = os.path.join(classFolder, imgName)
             img = load_img(imgPath)
@@ -96,7 +147,7 @@ for folder in os.listdir(finalDataset):
                     break
 
         if remainder > 0:
-            chosenImages = random.sample(images, k = remainder)
+            chosenImages = random.sample(images, remainder)
             for imgName in chosenImages:
                 imgPath = os.path.join(classFolder, imgName)
                 img = load_img(imgPath)

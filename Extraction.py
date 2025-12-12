@@ -51,14 +51,14 @@ def extract_features (path):
     return features
 
 
-def load_dataset (datasetPath):
+def load_dataset (datasetPath, folderType):
     x, y = [], []
 
     classes = sorted(os.listdir(datasetPath))
     label_map = {c: idx for idx, c in enumerate(classes)}
 
     for c in classes:
-        folder = os.path.join(dataset_path, c)
+        folder = os.path.join(datasetPath, c, folderType)
         if not os.path.isdir(folder):
             continue
         for file in os.listdir(folder):
@@ -70,8 +70,10 @@ def load_dataset (datasetPath):
     return np.array(x), np.array(y)
 
 if __name__ == "__main__":
-    dataset_path = "FinalDataset"
-    X, Y = load_dataset(dataset_path)
+    dataset = "FinalDataset"
+
+    # Extract training data
+    X, Y = load_dataset(dataset, "Train")
 
     # print("Original X shape:", X.shape)
     # print("y shape:", y.shape)
@@ -83,7 +85,21 @@ if __name__ == "__main__":
     # print("Scaled X shape:", X_scaled.shape)
 
     # Save to files
-    np.save("XFeatures.npy", XScaled)
-    np.save("YLabels.npy", Y)
+    np.save("TrainingXFeatures.npy", XScaled)
+    np.save("TrainingYLabels.npy", Y)
 
-    # print("Features and labels saved: X_scaled.npy, y.npy")
+    # Extract testing data
+    X, Y = load_dataset(dataset, "Test")
+
+    # print("Original X shape:", X.shape)
+    # print("y shape:", y.shape)
+
+    # Scale features
+    scaler = StandardScaler()
+    XScaled = scaler.fit_transform(X)
+
+    # print("Scaled X shape:", X_scaled.shape)
+
+    # Save to files
+    np.save("TestingXFeatures.npy", XScaled)
+    np.save("TestingYLabels.npy", Y)
