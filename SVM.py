@@ -47,8 +47,8 @@ for C in CValues:
     trainPred = predict_with_rejection(SVCmodel, XTrainScaled, THRESHOLD)
     testPred  = predict_with_rejection(SVCmodel, XTestScaled, THRESHOLD)
 
-    trainAcc = accuracy_score.score(YTrain, trainPred) * 100
-    testAcc = accuracy_score.score(YTest, testPred) * 100
+    trainAcc = accuracy_score(YTrain, trainPred) * 100
+    testAcc = accuracy_score(YTest, testPred) * 100
 
     print("\nC Value:", C)
     print(f"Training Accuracy: {trainAcc:.4f}%")
