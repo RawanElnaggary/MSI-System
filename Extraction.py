@@ -1,105 +1,61 @@
 import os
-import cv2
 import numpy as np
-from skimage.feature import local_binary_pattern
-from sklearn.preprocessing import StandardScaler
+from PIL import Image
+import torch
+import torch.nn as nn
+import torchvision.models as models
+import torchvision.transforms as transforms
 
-def extract_color_histogram (image):
-    # Convert BGR to HSV
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+resnet.eval()
 
-    histogram = cv2.calcHist([hsv], [0, 1, 2], None,
-                             [8, 8, 8],
-                             [0, 180, 0, 256, 0, 256])
+featureExtractor = nn.Sequential (
+    *list(resnet.children())[:-1],
+    nn.Flatten()
+)
 
-    # Normalize the histogram, convert to 1D vector
-    histogram = cv2.normalize(histogram, histogram).flatten()
-    return histogram
-
-
-def extract_lbp (image):
-    # Convert to grayScale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-    LBP = local_binary_pattern(gray, 24, 3, method="uniform")
-
-    histogram, _ = np.histogram (
-        LBP.ravel(),
-        bins=np.arange(0, 27),
-        range=(0, 26)
+preprocess = transforms.Compose ([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
     )
+])
 
-    # Convert histogram values to float
-    histogram = histogram.astype("float")
-    # Normalize the histogram (converts into a probability distribution)
-    histogram /= histogram.sum()
-    return histogram
-
-
-def extract_features (path):
-    image = cv2.imread(path)
-    if image is None:
-        print(f"Warning: Could not read image {path}")
-        return None
-
-    image = cv2.resize(image, (128, 128))
-
-    colorFeatures = extract_color_histogram(image)
-    lbpFeatures = extract_lbp(image)
-
-    features = np.concatenate([colorFeatures, lbpFeatures])
+def extract_resnet_features (img_path):
+    img = Image.open(img_path).convert("RGB")
+    img = preprocess(img).unsqueeze(0)
+    with torch.no_grad():
+        features = featureExtractor(img).numpy().squeeze()
     return features
 
+def load_dataset (path, split):
+    X, y = [], []
+    classNames = sorted(os.listdir(path))
 
-def load_dataset (datasetPath, folderType):
-    x, y = [], []
-
-    classes = sorted(os.listdir(datasetPath))
-    label_map = {c: idx for idx, c in enumerate(classes)}
-
-    for c in classes:
-        folder = os.path.join(datasetPath, c, folderType)
-        if not os.path.isdir(folder):
+    for label, className in enumerate(classNames):
+        splitFolder = os.path.join(path, className, split)
+        if not os.path.isdir(splitFolder):
             continue
-        for file in os.listdir(folder):
-                feature = extract_features(os.path.join(folder, file))
-                if feature is not None:
-                    x.append(feature)
-                    y.append(label_map[c])
 
-    return np.array(x), np.array(y)
+        for imgName in os.listdir(splitFolder):
+            imgPath = os.path.join(splitFolder, imgName)
+            try:
+                X.append(extract_resnet_features(imgPath))
+                y.append(label)
+            except Exception:
+                pass
+
+    return np.array(X), np.array(y)
 
 if __name__ == "__main__":
-    dataset = "FinalDataset"
+    datasetPath = "FinalDataset"
 
-    # Extract training data
-    X, Y = load_dataset(dataset, "Train")
+    XTrain, YTrain = load_dataset(datasetPath, "Train")
+    np.save("TrainingXFeatures.npy", XTrain)
+    np.save("TrainingYLabels.npy", YTrain)
 
-    # print("Original X shape:", X.shape)
-    # print("y shape:", y.shape)
-
-    # Scale features
-    scaler = StandardScaler()
-    XScaled = scaler.fit_transform(X)
-
-    # print("Scaled X shape:", X_scaled.shape)
-
-    # Save to files
-    np.save("TrainingXFeatures.npy", XScaled)
-    np.save("TrainingYLabels.npy", Y)
-
-    # Extract testing data
-    X, Y = load_dataset(dataset, "Test")
-
-    # print("Original X shape:", X.shape)
-    # print("y shape:", y.shape)
-
-    # Scale features
-    scaler = StandardScaler()
-    XScaled = scaler.fit_transform(X)
-
-    # print("Scaled X shape:", X_scaled.shape)
-
-    # Save to files
-    np.save("TestingXFeatures.npy", XScaled)
-    np.save("TestingYLabels.npy", Y)
+    XTest, YTest = load_dataset(datasetPath, "Test")
+    np.save("TestingXFeatures.npy", XTest)
+    np.save("TestingYLabels.npy", YTest)

@@ -3,26 +3,22 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score
 
-
 # Load Features
-
 XTrain = np.load("TrainingXFeatures.npy")
 XTest = np.load("TestingXFeatures.npy")
 
 YTrain = np.load("TrainingYLabels.npy")
 YTest  = np.load("TestingYLabels.npy")
 
-
 # Scale Features
-
 scaler = StandardScaler()
 XTrainScaled = scaler.fit_transform(XTrain)
 XTestScaled  = scaler.transform(XTest)
 
-
+# Rejection Threshold
 THRESHOLD = 0.60
 
-def predict_with_rejection_knn(model, X, threshold):
+def predict_with_rejection (model, X, threshold):
     probs = model.predict_proba(X)
     preds = model.predict(X)
 
@@ -36,28 +32,103 @@ def predict_with_rejection_knn(model, X, threshold):
 
     return np.array(final_preds)
 
-k_values = [5, 7, 9]
+KValues = [3, 5, 7, 9, 11, 13]
 
-print("\n===== K-NN Evaluation =====\n")
-
-for K in k_values:
-    print(f"➡ Testing k = {K}")
-
-    knn = KNeighborsClassifier(
-        n_neighbors=K,
-        weights='distance'
+print("\nDistance and Euclidean:")
+print("=======================================")
+for K in KValues:
+    # Train KNN Model
+    KNNModel = KNeighborsClassifier (
+        n_neighbors = K,
+        weights = 'distance',
+        metric = 'euclidean',
     )
-    knn.fit(XTrainScaled, YTrain)
+    KNNModel.fit(XTrainScaled, YTrain)
 
     # Predictions with rejection
-    train_pred = predict_with_rejection_knn(knn, XTrainScaled, THRESHOLD)
-    test_pred  = predict_with_rejection_knn(knn, XTestScaled, THRESHOLD)
+    trainPred = predict_with_rejection(KNNModel, XTrainScaled, THRESHOLD)
+    testPred = predict_with_rejection(KNNModel, XTestScaled, THRESHOLD)
 
-    # Accuracy
-    train_acc = accuracy_score(YTrain, train_pred)
-    test_acc  = accuracy_score(YTest, test_pred)
+    trainAcc = accuracy_score.score(YTrain, trainPred) * 100
+    testAcc = accuracy_score.score(YTest, testPred) * 100
 
-    print(f"   Training Accuracy: {train_acc:.4f}")
-    print(f"   Testing  Accuracy: {test_acc:.4f}\n")
+    print("\nK Value:", K)
+    print(f"Training Accuracy: {trainAcc:.4f}%")
+    print(f"Testing  Accuracy: {testAcc:.4f}%")
+    print("Difference:", trainAcc - testAcc)
+    print("\n---------------------------------------")
 
 
+print("\nDistance and Cosine:")
+print("=======================================")
+for K in KValues:
+    # Train KNN Model
+    KNNModel = KNeighborsClassifier (
+        n_neighbors = K,
+        weights = 'distance',
+        metric = 'cosine',
+    )
+    KNNModel.fit(XTrainScaled, YTrain)
+
+    # Predictions with rejection
+    trainPred = predict_with_rejection(KNNModel, XTrainScaled, THRESHOLD)
+    testPred = predict_with_rejection(KNNModel, XTestScaled, THRESHOLD)
+
+    trainAcc = accuracy_score.score(YTrain, trainPred) * 100
+    testAcc = accuracy_score.score(YTest, testPred) * 100
+
+    print("\nK Value:", K)
+    print(f"Training Accuracy: {trainAcc:.4f}%")
+    print(f"Testing  Accuracy: {testAcc:.4f}%")
+    print("Difference:", trainAcc - testAcc)
+    print("\n---------------------------------------")
+
+
+print("\nUniform and Euclidean:")
+print("=======================================")
+for K in KValues:
+    # Train KNN Model
+    KNNModel = KNeighborsClassifier (
+        n_neighbors = K,
+        weights = 'uniform',
+        metric = 'euclidean',
+    )
+    KNNModel.fit(XTrainScaled, YTrain)
+
+    # Predictions with rejection
+    trainPred = predict_with_rejection(KNNModel, XTrainScaled, THRESHOLD)
+    testPred = predict_with_rejection(KNNModel, XTestScaled, THRESHOLD)
+
+    trainAcc = accuracy_score.score(YTrain, trainPred) * 100
+    testAcc = accuracy_score.score(YTest, testPred) * 100
+
+    print("\nK Value:", K)
+    print(f"Training Accuracy: {trainAcc:.4f}%")
+    print(f"Testing  Accuracy: {testAcc:.4f}%")
+    print("Difference:", trainAcc - testAcc)
+    print("\n---------------------------------------")
+
+
+print("\nUniform and Cosine:")
+print("=======================================")
+for K in KValues:
+    # Train KNN Model
+    KNNModel = KNeighborsClassifier (
+        n_neighbors = K,
+        weights = 'uniform',
+        metric = 'cosine',
+    )
+    KNNModel.fit(XTrainScaled, YTrain)
+
+    # Predictions with rejection
+    trainPred = predict_with_rejection(KNNModel, XTrainScaled, THRESHOLD)
+    testPred = predict_with_rejection(KNNModel, XTestScaled, THRESHOLD)
+
+    trainAcc = accuracy_score.score(YTrain, trainPred) * 100
+    testAcc = accuracy_score.score(YTest, testPred) * 100
+
+    print("\nK Value:", K)
+    print(f"Training Accuracy: {trainAcc:.4f}%")
+    print(f"Testing  Accuracy: {testAcc:.4f}%")
+    print("Difference:", trainAcc - testAcc)
+    print("\n---------------------------------------")

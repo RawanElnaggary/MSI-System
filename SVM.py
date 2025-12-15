@@ -15,15 +15,6 @@ scaler = StandardScaler()
 XTrainScaled = scaler.fit_transform(XTrain)
 XTestScaled = scaler.transform(XTest)
 
-# Train SVM Model
-SVCmodel = SVC (
-    kernel = 'rbf',
-    C = 10,
-    gamma = 'scale',
-    probability = True
-)
-SVCmodel.fit(XTrainScaled, YTrain)
-
 # Rejection Threshold
 THRESHOLD = 0.60   # Can be tuned (0.5 → 0.75)
 
@@ -40,12 +31,27 @@ def predict_with_rejection (model, X, threshold):
             finalPreds.append(p)
     return np.array(finalPreds)
 
-# Evaluate
-trainPred = predict_with_rejection(SVCmodel, XTrainScaled, THRESHOLD)
-testPred  = predict_with_rejection(SVCmodel, XTestScaled, THRESHOLD)
+CValues = [0.3, 0.5, 0.7, 0.9, 1.0, 1.5, 3, 5, 7 , 9, 10]
 
-train_acc = accuracy_score(YTrain, trainPred)
-test_acc  = accuracy_score(YTest, testPred)
+for C in CValues:
+    # Train SVC Model
+    SVCmodel = SVC (
+        kernel = 'rbf',
+        C = C,
+        gamma = 'scale',
+        probability = True
+    )
+    SVCmodel.fit(XTrainScaled, YTrain)
 
-print(f"Training Accuracy: {train_acc:.4f}")
-print(f"Testing  Accuracy: {test_acc:.4f}")
+    # Predictions with rejection
+    trainPred = predict_with_rejection(SVCmodel, XTrainScaled, THRESHOLD)
+    testPred  = predict_with_rejection(SVCmodel, XTestScaled, THRESHOLD)
+
+    trainAcc = accuracy_score.score(YTrain, trainPred) * 100
+    testAcc = accuracy_score.score(YTest, testPred) * 100
+
+    print("\nC Value:", C)
+    print(f"Training Accuracy: {trainAcc:.4f}%")
+    print(f"Testing  Accuracy: {testAcc:.4f}%")
+    print("Difference:", trainAcc - testAcc)
+    print("\n=======================================")

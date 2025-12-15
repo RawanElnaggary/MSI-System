@@ -92,8 +92,9 @@ imgAug = ImageDataGenerator (
     height_shift_range = 0.15,
     zoom_range = 0.15,
     horizontal_flip = True,
-    brightness_range = [0.7, 1.3],
-    shear_range = 0.05,
+    brightness_range = [0.5, 1.5],
+    channel_shift_range = 15,
+    shear_range = 0.15,
     fill_mode = "nearest"
 )
 
