@@ -54,7 +54,6 @@ print("\nC Value: 0.9")
 print(f"Training Accuracy: {trainAcc:.4f}%")
 print(f"Testing  Accuracy: {testAcc:.4f}%")
 print("Difference:", trainAcc - testAcc)
-print("\n=======================================")
 
 joblib.dump(SVCModel, "SVCModel.pkl")
 joblib.dump(scaler, "Scaler.pkl")
