@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score
+import joblib
 
 # Load Features
 XTrain = np.load("TrainingXFeatures.npy")
@@ -16,7 +17,7 @@ XTrainScaled = scaler.fit_transform(XTrain)
 XTestScaled = scaler.transform(XTest)
 
 # Rejection Threshold
-THRESHOLD = 0.60   # Can be tuned (0.5 → 0.75)
+THRESHOLD = 0.50
 
 def predict_with_rejection (model, X, threshold):
     probs = model.predict_proba(X)
@@ -26,32 +27,34 @@ def predict_with_rejection (model, X, threshold):
     finalPreds = []
     for p, conf in zip(preds, maxProb):
         if conf < threshold:
-            finalPreds.append(6)     # Unknown class
+            finalPreds.append(-1)     # Unknown class
         else:
             finalPreds.append(p)
     return np.array(finalPreds)
 
-CValues = [0.3, 0.5, 0.7, 0.9, 1.0, 1.5, 3, 5, 7 , 9, 10]
 
-for C in CValues:
-    # Train SVC Model
-    SVCmodel = SVC (
-        kernel = 'rbf',
-        C = C,
-        gamma = 'scale',
-        probability = True
-    )
-    SVCmodel.fit(XTrainScaled, YTrain)
+# Train SVC Model
+SVCModel = SVC (
+    kernel = 'rbf',
+    C = 0.9,
+    gamma = 'scale',
+    probability = True,
+    random_state = 42
+)
+SVCModel.fit(XTrainScaled, YTrain)
 
-    # Predictions with rejection
-    trainPred = predict_with_rejection(SVCmodel, XTrainScaled, THRESHOLD)
-    testPred  = predict_with_rejection(SVCmodel, XTestScaled, THRESHOLD)
+# Predictions with rejection
+trainPred = predict_with_rejection(SVCModel, XTrainScaled, THRESHOLD)
+testPred  = predict_with_rejection(SVCModel, XTestScaled, THRESHOLD)
 
-    trainAcc = accuracy_score(YTrain, trainPred) * 100
-    testAcc = accuracy_score(YTest, testPred) * 100
+trainAcc = accuracy_score(YTrain, trainPred) * 100
+testAcc = accuracy_score(YTest, testPred) * 100
 
-    print("\nC Value:", C)
-    print(f"Training Accuracy: {trainAcc:.4f}%")
-    print(f"Testing  Accuracy: {testAcc:.4f}%")
-    print("Difference:", trainAcc - testAcc)
-    print("\n=======================================")
+print("\nC Value: 0.9")
+print(f"Training Accuracy: {trainAcc:.4f}%")
+print(f"Testing  Accuracy: {testAcc:.4f}%")
+print("Difference:", trainAcc - testAcc)
+print("\n=======================================")
+
+joblib.dump(SVCModel, "SVCModel.pkl")
+joblib.dump(scaler, "Scaler.pkl")
