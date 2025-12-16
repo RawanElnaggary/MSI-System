@@ -12,6 +12,15 @@ import os
 import sys
 from tkinter import Tk, filedialog
 
+# Import the existing extraction logic
+try:
+    from Extraction import extract_resnet_features, featureExtractor, preprocess
+    EXTRACTION_AVAILABLE = True
+    print("[OK] Imported existing feature extraction logic from Extraction.py")
+except ImportError:
+    EXTRACTION_AVAILABLE = False
+    print("[WARNING] Could not import Extraction.py - will use fallback extraction")
+
 
 class MSIClassifier:
     """Real-time material classification using pre-trained models"""
@@ -36,54 +45,87 @@ class MSIClassifier:
         except Exception as e:
             raise RuntimeError(f"Failed to load model: {e}")
 
-        print("[...] Loading ResNet50 feature extractor...")
-        try:
-            resnet = models.resnet50(
-                weights=models.ResNet50_Weights.IMAGENET1K_V1)
-            resnet.eval()
+        # Use existing feature extractor from Extraction.py
+        if EXTRACTION_AVAILABLE:
+            print("[OK] Using feature extractor from Extraction.py")
+            self.feature_extractor = featureExtractor
+            self.preprocess = preprocess
+            self.use_existing_extraction = True
+        else:
+            # Fallback: create own extractor (only if Extraction.py unavailable)
+            print("[...] Loading ResNet50 feature extractor (fallback)...")
+            try:
+                resnet = models.resnet50(
+                    weights=models.ResNet50_Weights.IMAGENET1K_V1)
+                resnet.eval()
 
-            self.feature_extractor = nn.Sequential(
-                *list(resnet.children())[:-1],
-                nn.Flatten()
-            )
+                self.feature_extractor = nn.Sequential(
+                    *list(resnet.children())[:-1],
+                    nn.Flatten()
+                )
 
-            self.preprocess = transforms.Compose([
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
-            ])
-            print("[OK] Feature extractor loaded")
-        except Exception as e:
-            raise RuntimeError(f"Failed to load feature extractor: {e}")
+                self.preprocess = transforms.Compose([
+                    transforms.Resize((224, 224)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                         std=[0.229, 0.224, 0.225])
+                ])
+                print("[OK] Feature extractor loaded (fallback)")
+                self.use_existing_extraction = False
+            except Exception as e:
+                raise RuntimeError(f"Failed to load feature extractor: {e}")
 
-        self.threshold = 0.60
+        # CRITICAL: Class names MUST match the order in Extraction.py (sorted alphabetically)
+        # This is the EXACT order from sorted(os.listdir(path)) in Extraction.py
         self.class_names = [
-            "Glass", "Paper", "Cardboard",
-            "Plastic", "Metal", "Trash", "Unknown"
+            "Cardboard",  # 0
+            "Glass",      # 1
+            "Metal",      # 2
+            "Paper",      # 3
+            "Plastic",    # 4
+            "Trash",      # 5
+            "Unknown"     # 6 (for rejection)
         ]
+
         self.class_colors = {
-            0: (255, 180, 0),
-            1: (240, 240, 240),
-            2: (80, 160, 255),
-            3: (80, 220, 80),
-            4: (200, 200, 200),
-            5: (60, 60, 240),
-            6: (140, 140, 140)
+            0: (80, 160, 255),   # Cardboard - Blue
+            1: (255, 180, 0),    # Glass - Gold
+            2: (200, 200, 200),  # Metal - Silver
+            3: (240, 240, 240),  # Paper - White
+            4: (80, 220, 80),    # Plastic - Green
+            5: (60, 60, 240),    # Trash - Red
+            6: (140, 140, 140)   # Unknown - Gray
         }
+
+        # Threshold from training files
+        if model_type == "SVM":
+            self.threshold = 0.50  # From SVM.py
+        else:  # KNN
+            self.threshold = 0.40  # From KNN.py
 
         self.prediction_history = deque(maxlen=5)
         self.frame_times = deque(maxlen=30)
 
+        # Cache for pre-extracted features
+        self.preloaded_features = None
+        self.preloaded_labels = None
+        self.image_index_map = {}
+
         print(f"[OK] Classifier ready (threshold: {self.threshold})")
         print(f"{'='*60}\n")
 
-    def extract_features(self, frame):
-        """Extract ResNet50 features from frame"""
+    def extract_features_from_frame(self, frame):
+        """
+        Extract ResNet50 features from frame using EXISTING logic
+
+        This method uses the exact same extraction process as Extraction.py
+        """
         try:
+            # Convert frame to RGB
             img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             pil_img = PILImage.fromarray(img_rgb)
 
+            # Use existing preprocessing and extraction (SAME as Extraction.py)
             img_tensor = self.preprocess(pil_img).unsqueeze(0)
             with torch.no_grad():
                 features = self.feature_extractor(img_tensor).numpy().squeeze()
@@ -93,40 +135,317 @@ class MSIClassifier:
             print(f"[ERROR] Feature extraction failed: {e}")
             return None
 
-    def classify(self, frame):
-        """Classify frame with confidence-based rejection"""
+    def extract_features_from_path(self, img_path):
+        """
+        Extract features from image path using EXISTING extraction function
 
-        features = self.extract_features(frame)
+        This reuses extract_resnet_features() from Extraction.py
+        """
+        if EXTRACTION_AVAILABLE:
+            try:
+                # Use the EXACT same function from Extraction.py
+                features = extract_resnet_features(img_path)
+                return features.reshape(1, -1)
+            except Exception as e:
+                print(f"[ERROR] Feature extraction from path failed: {e}")
+                return None
+        else:
+            # Fallback: load image and extract
+            try:
+                frame = cv2.imread(img_path)
+                if frame is None:
+                    return None
+                return self.extract_features_from_frame(frame)
+            except Exception as e:
+                print(f"[ERROR] Fallback extraction failed: {e}")
+                return None
+
+    def load_precomputed_features(self, dataset_path):
+        """
+        Load pre-extracted features from .npy files (created by Extraction.py)
+
+        Looks for:
+        - TestingXFeatures.npy (created by Extraction.py)
+        - TestingYLabels.npy (optional, for validation)
+        """
+        features_path = "TestingXFeatures.npy"
+        labels_path = "TestingYLabels.npy"
+
+        if not os.path.exists(features_path):
+            print(f"[INFO] Pre-extracted features not found: {features_path}")
+            print(f"[INFO] Run Extraction.py first to create feature files")
+            print(f"[INFO] Falling back to real-time extraction")
+            return False
+
+        try:
+            print(f"[...] Loading pre-extracted features from {features_path}")
+            self.preloaded_features = np.load(features_path)
+
+            if os.path.exists(labels_path):
+                self.preloaded_labels = np.load(labels_path)
+                print(
+                    f"[OK] Also loaded ground truth labels from {labels_path}")
+
+            print(
+                f"[OK] Loaded {len(self.preloaded_features)} pre-extracted features")
+
+            # Build index mapping: image path -> feature index
+            # This must match the EXACT order used in Extraction.py
+            image_files = []
+            class_names = sorted(os.listdir(dataset_path))
+
+            feature_idx = 0
+            for class_name in class_names:
+                test_folder = os.path.join(dataset_path, class_name, "Test")
+                if not os.path.isdir(test_folder):
+                    continue
+
+                for img_name in sorted(os.listdir(test_folder)):
+                    if not img_name.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
+                        continue
+
+                    img_path = os.path.join(test_folder, img_name)
+                    self.image_index_map[img_path] = feature_idx
+                    image_files.append(img_path)
+                    feature_idx += 1
+
+            if len(image_files) != len(self.preloaded_features):
+                print(f"[WARNING] Feature count mismatch!")
+                print(f"  Expected: {len(image_files)} images")
+                print(f"  Got: {len(self.preloaded_features)} features")
+                print(
+                    f"[INFO] This may happen if dataset changed after running Extraction.py")
+                print(f"[INFO] Falling back to real-time extraction")
+                self.preloaded_features = None
+                self.image_index_map = {}
+                return False
+
+            print(
+                f"[OK] Indexed {len(self.image_index_map)} images to pre-computed features")
+            print(f"[OK] Ready for FAST classification (no re-extraction needed)")
+            return True
+
+        except Exception as e:
+            print(f"[ERROR] Failed to load pre-extracted features: {e}")
+            self.preloaded_features = None
+            self.image_index_map = {}
+            return False
+
+    def get_features(self, input_data):
+        """
+        Get features for classification
+
+        Args:
+            input_data: Either:
+                - str: image file path -> check pre-computed, else extract
+                - np.ndarray: frame/image -> extract features
+                - int: index into pre-computed features
+
+        Returns:
+            features: (1, 2048) numpy array
+        """
+        # Case 1: Image path (string)
+        if isinstance(input_data, str):
+            # Try pre-computed features first
+            if input_data in self.image_index_map:
+                idx = self.image_index_map[input_data]
+                return self.preloaded_features[idx].reshape(1, -1)
+
+            # Otherwise extract using existing logic
+            return self.extract_features_from_path(input_data)
+
+        # Case 2: Feature index (integer)
+        elif isinstance(input_data, int):
+            if self.preloaded_features is not None:
+                if 0 <= input_data < len(self.preloaded_features):
+                    return self.preloaded_features[input_data].reshape(1, -1)
+            return None
+
+        # Case 3: Image array (frame from camera)
+        elif isinstance(input_data, np.ndarray):
+            return self.extract_features_from_frame(input_data)
+
+        else:
+            print(f"[ERROR] Invalid input type: {type(input_data)}")
+            return None
+
+    def classify(self, input_data):
+        """
+        Classify using pre-computed features OR real-time extraction
+        Uses EXACT same logic as KNN.py and SVM.py
+
+        Args:
+            input_data: str (path), np.ndarray (frame), or int (index)
+        """
+        features = self.get_features(input_data)
+
         if features is None:
             return 6, 0.0, np.zeros(7)
 
+        # Scale features using the SAME scaler from training
         features_scaled = self.scaler.transform(features)
 
+        # Predict using the SAME logic as KNN.py/SVM.py
         if hasattr(self.model, 'predict_proba'):
             probs = self.model.predict_proba(features_scaled)[0]
             pred_class = np.argmax(probs)
-            confidence = probs[pred_class]
+            max_conf = probs[pred_class]
             all_probs = np.zeros(7)
             all_probs[:len(probs)] = probs
         else:
             pred_class = self.model.predict(features_scaled)[0]
-            confidence = 1.0
+            max_conf = 1.0
             all_probs = np.zeros(7)
             all_probs[pred_class] = 1.0
 
-        if confidence < self.threshold:
-            pred_class = 6
-            all_probs[6] = 1.0 - confidence
+        # Apply rejection threshold (SAME as training files)
+        if max_conf < self.threshold:
+            pred_class = 6  # Unknown class
+            all_probs[6] = 1.0 - max_conf
             confidence = all_probs[6]
-
-        self.prediction_history.append(pred_class)
-        if len(self.prediction_history) >= 3:
-            stable_pred = max(set(self.prediction_history),
-                              key=self.prediction_history.count)
         else:
-            stable_pred = pred_class
+            confidence = max_conf
 
-        return stable_pred, confidence, all_probs
+        # Temporal smoothing ONLY for live camera (not dataset testing)
+        if isinstance(input_data, np.ndarray):  # Camera frame
+            self.prediction_history.append(pred_class)
+            if len(self.prediction_history) >= 3:
+                stable_pred = max(set(self.prediction_history),
+                                  key=self.prediction_history.count)
+            else:
+                stable_pred = pred_class
+            return stable_pred, confidence, all_probs
+        else:
+            # Dataset testing - no smoothing
+            return pred_class, confidence, all_probs
+
+    def process_dataset(self, dataset_path):
+        """Process a test dataset using pre-computed features when available"""
+
+        print(f"\n{'='*60}")
+        print(f"PROCESSING DATASET: {dataset_path}")
+        print(f"{'='*60}\n")
+
+        if not os.path.exists(dataset_path):
+            print(f"[ERROR] Dataset path not found: {dataset_path}")
+            return False
+
+        # Clear prediction history for dataset testing
+        self.prediction_history.clear()
+
+        # Try to load pre-computed features (uses Extraction.py output)
+        using_precomputed = self.load_precomputed_features(dataset_path)
+
+        results = []
+        total = 0
+
+        # Collect image files (must match Extraction.py order)
+        image_files = []
+        ground_truth_labels = []
+        class_names = sorted(os.listdir(dataset_path))
+
+        # Map class names to indices (MUST match training order - alphabetical)
+        class_name_to_idx = {}
+        idx = 0
+        for class_name in sorted(["Cardboard", "Glass", "Metal", "Paper", "Plastic", "Trash"]):
+            class_name_to_idx[class_name] = idx
+            idx += 1
+
+        print(f"[INFO] Class mapping (must match Extraction.py):")
+        for name, idx in sorted(class_name_to_idx.items(), key=lambda x: x[1]):
+            print(f"  {idx}: {name}")
+        print()
+
+        for class_name in class_names:
+            test_folder = os.path.join(dataset_path, class_name, "Test")
+            if not os.path.isdir(test_folder):
+                continue
+
+            # Get the ground truth label index
+            true_label = class_name_to_idx.get(class_name, -1)
+
+            if true_label == -1:
+                print(f"[WARNING] Unknown class folder: {class_name}")
+                continue
+
+            for img_name in sorted(os.listdir(test_folder)):
+                if img_name.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
+                    image_files.append(os.path.join(test_folder, img_name))
+                    ground_truth_labels.append(true_label)
+
+        if len(image_files) == 0:
+            print("[ERROR] No images found in dataset")
+            return False
+
+        print(f"[INFO] Found {len(image_files)} images")
+
+        if using_precomputed:
+            print(f"[INFO] Using pre-extracted features from Extraction.py (FAST)")
+        else:
+            print(f"[INFO] Extracting features in real-time (SLOW)")
+            print(f"[TIP] Run Extraction.py first to speed up processing")
+
+        print(f"[INFO] Processing...\n")
+
+        start_time = time()
+
+        correct_predictions = 0
+        total_predictions = 0
+
+        for idx, img_path in enumerate(image_files):
+            try:
+                # Classify using image path (automatically uses pre-computed if available)
+                class_id, confidence, all_probs = self.classify(img_path)
+
+                img_name = os.path.basename(img_path)
+                true_label = ground_truth_labels[idx]
+
+                # Count correct predictions (excluding "Unknown" class)
+                if class_id != 6 and true_label != -1:
+                    total_predictions += 1
+                    if class_id == true_label:
+                        correct_predictions += 1
+
+                results.append({
+                    'filename': img_name,
+                    'predicted_class': class_id,
+                    'class_name': self.class_names[class_id],
+                    'confidence': confidence,
+                    'true_label': true_label,
+                    'true_class_name': self.class_names[true_label] if true_label != -1 else "Unknown",
+                    'correct': (class_id == true_label) and (class_id != 6)
+                })
+
+                if (idx + 1) % 10 == 0 or (idx + 1) == len(image_files):
+                    elapsed = time() - start_time
+                    rate = (idx + 1) / elapsed if elapsed > 0 else 0
+                    print(
+                        f"[PROGRESS] {idx+1}/{len(image_files)} images processed ({rate:.1f} img/sec)")
+
+                total += 1
+
+            except Exception as e:
+                print(f"[ERROR] Failed to process {img_path}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
+
+        elapsed_total = time() - start_time
+        avg_rate = total / elapsed_total if elapsed_total > 0 else 0
+
+        # Calculate accuracy
+        accuracy = (correct_predictions / total_predictions *
+                    100) if total_predictions > 0 else 0
+
+        print(
+            f"\n[OK] Processed {total} images in {elapsed_total:.2f}s ({avg_rate:.1f} img/sec)")
+        print(
+            f"[INFO] Accuracy: {correct_predictions}/{total_predictions} ({accuracy:.2f}%)")
+
+        # Display results in GUI with accuracy
+        self.display_results_gui(results, dataset_path, accuracy)
+
+        return True
 
     def draw_ui(self, frame, class_id, confidence, all_probs, fps):
         """Draw UI overlay on frame"""
@@ -222,75 +541,21 @@ class MSIClassifier:
 
         return overlay
 
-    def process_dataset(self, dataset_path):
-        """Process a hidden test dataset and display results in GUI"""
-
-        print(f"\n{'='*60}")
-        print(f"PROCESSING DATASET: {dataset_path}")
-        print(f"{'='*60}\n")
-
-        if not os.path.exists(dataset_path):
-            print(f"[ERROR] Dataset path not found: {dataset_path}")
-            return False
-
-        results = []
-        total = 0
-
-        image_files = []
-        for root, dirs, files in os.walk(dataset_path):
-            for file in files:
-                if file.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
-                    image_files.append(os.path.join(root, file))
-
-        if len(image_files) == 0:
-            print("[ERROR] No images found in dataset")
-            return False
-
-        print(f"[INFO] Found {len(image_files)} images")
-        print(f"[INFO] Processing...\n")
-
-        for idx, img_path in enumerate(image_files, 1):
-            try:
-                frame = cv2.imread(img_path)
-                if frame is None:
-                    print(f"[WARNING] Could not load: {img_path}")
-                    continue
-
-                class_id, confidence, all_probs = self.classify(frame)
-
-                img_name = os.path.basename(img_path)
-                results.append({
-                    'filename': img_name,
-                    'predicted_class': class_id,
-                    'class_name': self.class_names[class_id],
-                    'confidence': confidence
-                })
-
-                if idx % 10 == 0 or idx == len(image_files):
-                    print(
-                        f"[PROGRESS] {idx}/{len(image_files)} images processed")
-
-                total += 1
-
-            except Exception as e:
-                print(f"[ERROR] Failed to process {img_path}: {e}")
-                continue
-
-        # Display results in GUI
-        self.display_results_gui(results, dataset_path)
-
-        return True
-
-    def display_results_gui(self, results, dataset_path):
+    def display_results_gui(self, results, dataset_path, accuracy=None):
         """Display dataset results in a scrollable GUI window"""
 
         width, height = 1000, 700
 
         # Calculate class distribution
         class_counts = {}
+        correct_counts = {}
         for result in results:
             class_name = result['class_name']
             class_counts[class_name] = class_counts.get(class_name, 0) + 1
+
+            if result.get('correct', False):
+                correct_counts[class_name] = correct_counts.get(
+                    class_name, 0) + 1
 
         total = len(results)
 
@@ -300,7 +565,7 @@ class MSIClassifier:
         cv2.resizeWindow(window_name, width, height)
 
         scroll_pos = 0
-        max_scroll = max(0, len(results))
+        max_scroll = max(0, len(results) - 12)
         scroll_delta = 0
 
         def mouse_callback(event, x, y, flags, param):
@@ -324,7 +589,12 @@ class MSIClassifier:
             # Title
             cv2.putText(frame, "CLASSIFICATION RESULTS", (30, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
-            cv2.putText(frame, f"Model: {self.model_type} | Total: {total} images",
+
+            # Subtitle with accuracy
+            subtitle = f"Model: {self.model_type} | Total: {total} images"
+            if accuracy is not None:
+                subtitle += f" | Accuracy: {accuracy:.2f}%"
+            cv2.putText(frame, subtitle,
                         (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1)
 
             # Separator
@@ -333,93 +603,180 @@ class MSIClassifier:
 
             # Summary panel
             summary_y = title_height + 20
-            summary_height = 180
+            summary_height = 220
 
             cv2.rectangle(frame, (30, summary_y), (width - 30, summary_y + summary_height),
                           (40, 40, 40), -1)
             cv2.rectangle(frame, (30, summary_y), (width - 30, summary_y + summary_height),
                           (80, 80, 80), 2)
 
-            cv2.putText(frame, "CLASS DISTRIBUTION", (50, summary_y + 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            # Accuracy display
+            # Accuracy display with better spacing
+            if accuracy is not None:
+                cv2.putText(frame, "OVERALL ACCURACY", (50, summary_y + 35),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+                # Large accuracy percentage (moved down)
+                acc_text = f"{accuracy:.2f}%"
+                acc_color = (100, 255, 100) if accuracy >= 75 else (
+                    255, 200, 100) if accuracy >= 50 else (60, 60, 240)
+                cv2.putText(frame, acc_text, (50, summary_y + 90),  # Changed from 70 to 90
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.8, acc_color, 3)
+
+                # Accuracy bar (adjusted position)
+                bar_x, bar_y = 280, summary_y + 60  # Adjusted from 45
+                bar_width, bar_height = 650, 30
+
+                # Accuracy bar
+                bar_x, bar_y = 280, summary_y + 45
+                bar_width, bar_height = 650, 30
+
+                # Background
+                cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height),
+                              (60, 60, 60), -1)
+
+                # Fill based on accuracy
+                fill_width = int(bar_width * (accuracy / 100))
+                cv2.rectangle(frame, (bar_x, bar_y), (bar_x + fill_width, bar_y + bar_height),
+                              acc_color, -1)
+
+                # Border
+                cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_height),
+                              (120, 120, 120), 2)
+
+                # Separator line
+                cv2.line(frame, (40, summary_y + 95), (width - 40, summary_y + 95),
+                         (80, 80, 80), 1)
+
+            # Class distribution
+            dist_y = summary_y + 110
+            cv2.putText(frame, "CLASS DISTRIBUTION", (50, dist_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
 
             # Display class distribution
             col1_x, col2_x = 50, 500
-            row_y = summary_y + 65
-            row_spacing = 30
+            row_y = dist_y + 25
+            row_spacing = 27
 
             for idx, class_name in enumerate(self.class_names):
+                if class_name == "Unknown":
+                    continue
+
                 count = class_counts.get(class_name, 0)
                 percentage = (count / total * 100) if total > 0 else 0
 
-                x_pos = col1_x if idx < 4 else col2_x
-                y_pos = row_y + (idx % 4) * row_spacing
+                x_pos = col1_x if idx < 3 else col2_x
+                y_pos = row_y + (idx % 3) * row_spacing
 
                 color = self.class_colors[idx]
 
                 # Color indicator
-                cv2.circle(frame, (x_pos + 10, y_pos - 5), 8, color, -1)
+                cv2.circle(frame, (x_pos + 10, y_pos - 5), 6, color, -1)
                 cv2.circle(frame, (x_pos + 10, y_pos - 5),
-                           8, (200, 200, 200), 1)
+                           6, (200, 200, 200), 1)
 
                 # Text
                 text = f"{class_name}: {count} ({percentage:.1f}%)"
-                cv2.putText(frame, text, (x_pos + 30, y_pos),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 220, 220), 1)
+                cv2.putText(frame, text, (x_pos + 25, y_pos),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1)
 
             # Results table header
-            table_y = summary_y + summary_height + 30
+            table_y = summary_y + summary_height + 20
             cv2.putText(frame, "DETAILED RESULTS", (30, table_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             # Table headers
-            header_y = table_y + 35
-            cv2.rectangle(frame, (30, header_y - 25), (width - 30, header_y + 5),
+            header_y = table_y + 30
+            cv2.rectangle(frame, (30, header_y - 20), (width - 30, header_y + 5),
                           (50, 50, 50), -1)
 
             cv2.putText(frame, "Filename", (50, header_y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-            cv2.putText(frame, "Predicted Class", (450, header_y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-            cv2.putText(frame, "Confidence", (700, header_y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+            cv2.putText(frame, "True", (350, header_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+            cv2.putText(frame, "Predicted", (500, header_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+            cv2.putText(frame, "Conf.", (680, header_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+            cv2.putText(frame, "Result", (780, header_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
 
             # Display results (scrollable)
-            result_y = header_y + 25
-            row_height = 28
+            result_y = header_y + 20
+            row_height = 26
 
-            for idx in range(scroll_pos, min(scroll_pos + 15, len(results))):
+            for idx in range(scroll_pos, min(scroll_pos + 12, len(results))):
                 result = results[idx]
                 y_pos = result_y + (idx - scroll_pos) * row_height
 
                 # Alternate row colors
                 if (idx - scroll_pos) % 2 == 0:
-                    cv2.rectangle(frame, (30, y_pos - 18), (width - 30, y_pos + 8),
+                    cv2.rectangle(frame, (30, y_pos - 16), (width - 30, y_pos + 8),
                                   (35, 35, 35), -1)
 
                 # Filename (truncated if too long)
                 filename = result['filename']
-                if len(filename) > 35:
-                    filename = filename[:32] + "..."
+                if len(filename) > 25:
+                    filename = filename[:22] + "..."
                 cv2.putText(frame, filename, (50, y_pos),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (220, 220, 220), 1)
 
-                # Class name with color indicator
+                # True class
+                true_label = result.get('true_label', -1)
+                if true_label != -1:
+                    true_color = self.class_colors[true_label]
+                    cv2.circle(frame, (350, y_pos - 5), 5, true_color, -1)
+                    true_name = result.get('true_class_name', 'Unknown')
+                    if len(true_name) > 8:
+                        true_name = true_name[:7] + "."
+                    cv2.putText(frame, true_name, (365, y_pos),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (220, 220, 220), 1)
+
+                # Predicted class with color indicator
                 class_id = result['predicted_class']
                 color = self.class_colors[class_id]
-                cv2.circle(frame, (450, y_pos - 5), 6, color, -1)
-                cv2.putText(frame, result['class_name'], (465, y_pos),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1)
+                cv2.circle(frame, (500, y_pos - 5), 5, color, -1)
+                pred_name = result['class_name']
+                if len(pred_name) > 8:
+                    pred_name = pred_name[:7] + "."
+                cv2.putText(frame, pred_name, (515, y_pos),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (220, 220, 220), 1)
 
                 # Confidence
-                conf_text = f"{result['confidence']*100:.1f}%"
-                cv2.putText(frame, conf_text, (700, y_pos),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1)
+                conf_text = f"{result['confidence']*100:.0f}%"
+                cv2.putText(frame, conf_text, (680, y_pos),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (220, 220, 220), 1)
+
+                # Result (colored circles)
+                # Result - Better visual indicators
+                if result.get('correct', False):
+                    # Green filled circle with checkmark
+                    cv2.circle(frame, (795, y_pos - 5), 8,
+                               (100, 255, 100), -1)  # Green fill
+                    cv2.circle(frame, (795, y_pos - 5), 8,
+                               (150, 255, 150), 1)   # Light green border
+                    # Mini checkmark
+                    cv2.line(frame, (791, y_pos - 4),
+                             (793, y_pos - 1), (40, 40, 40), 2)
+                    cv2.line(frame, (793, y_pos - 1),
+                             (799, y_pos - 9), (40, 40, 40), 2)
+
+                elif true_label != -1 and class_id != 6:
+                    # Red filled circle with X
+                    cv2.circle(frame, (795, y_pos - 5), 8,
+                               (60, 60, 240), -1)    # Red fill (BGR)
+                    cv2.circle(frame, (795, y_pos - 5), 8,
+                               (100, 100, 255), 1)   # Light red border
+                    # X mark
+                    cv2.line(frame, (791, y_pos - 9),
+                             (799, y_pos - 1), (30, 30, 30), 2)
+                    cv2.line(frame, (799, y_pos - 9),
+                             (791, y_pos - 1), (30, 30, 30), 2)
 
             # Scroll indicator
             if max_scroll > 0:
-                scroll_bar_height = 300
-                scroll_bar_y = header_y + 40
+                scroll_bar_height = 250
+                scroll_bar_y = header_y + 30
                 scroll_bar_x = width - 25
 
                 # Scroll track
@@ -429,10 +786,10 @@ class MSIClassifier:
 
                 # Scroll thumb
                 thumb_height = max(
-                    20, int(scroll_bar_height * (15 / len(results))))
+                    20, int(scroll_bar_height * (12 / len(results))))
                 thumb_y = scroll_bar_y + \
                     int((scroll_pos / max_scroll) *
-                        (scroll_bar_height - thumb_height))
+                        (scroll_bar_height - thumb_height)) if max_scroll > 0 else scroll_bar_y
                 cv2.rectangle(frame, (scroll_bar_x, thumb_y),
                               (scroll_bar_x + 10, thumb_y + thumb_height),
                               (120, 120, 120), -1)
@@ -447,6 +804,7 @@ class MSIClassifier:
 
             cv2.putText(frame, "Controls: arrows or Mouse Wheel = Scroll | Q or ESC = Close",
                         (30, bar_y + 32), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+
             if scroll_delta != 0:
                 scroll_pos = min(max_scroll, max(0, scroll_pos + scroll_delta))
                 scroll_delta = 0
@@ -500,18 +858,6 @@ class MSIClassifier:
         frame_count = 0
 
         try:
-            scroll_delta = {'delta': 0}
-            scroll_pos = 0
-
-            def mouse_callback(event, x, y, flags, param):
-                if event == cv2.EVENT_MOUSEWHEEL:
-                    if flags > 0:
-                        scroll_delta['delta'] = -1  # wheel up
-                    else:
-                        scroll_delta['delta'] = 1   # wheel down
-
-            cv2.setMouseCallback(window_name, mouse_callback)
-
             while True:
                 if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
                     print("\n[INFO] Window closed")
@@ -526,6 +872,7 @@ class MSIClassifier:
 
                 frame = cv2.flip(frame, 1)
 
+                # Classify frame (uses existing extraction logic)
                 class_id, confidence, all_probs = self.classify(frame)
 
                 if len(self.frame_times) > 0:
@@ -536,10 +883,6 @@ class MSIClassifier:
 
                 display = self.draw_ui(
                     frame, class_id, confidence, all_probs, fps)
-
-                # Apply mouse wheel scrolling (note: max_scroll is not used in run() method)
-                if scroll_delta['delta'] != 0:
-                    scroll_delta['delta'] = 0
 
                 cv2.imshow(window_name, display)
 
@@ -860,7 +1203,7 @@ def main():
 
                     print(f"[INFO] Selected: {dataset_path}")
 
-                    # Process dataset (results shown in GUI)
+                    # Process dataset (uses pre-computed features if available)
                     classifier.process_dataset(dataset_path)
 
             except FileNotFoundError as e:
