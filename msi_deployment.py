@@ -501,6 +501,7 @@ class MSIClassifier:
 
         try:
             scroll_delta = {'delta': 0}
+            scroll_pos = 0
 
             def mouse_callback(event, x, y, flags, param):
                 if event == cv2.EVENT_MOUSEWHEEL:
@@ -536,12 +537,8 @@ class MSIClassifier:
                 display = self.draw_ui(
                     frame, class_id, confidence, all_probs, fps)
 
-                # Apply mouse wheel scrolling
+                # Apply mouse wheel scrolling (note: max_scroll is not used in run() method)
                 if scroll_delta['delta'] != 0:
-                    scroll_pos = min(
-                        max_scroll,
-                        max(0, scroll_pos + scroll_delta['delta'])
-                    )
                     scroll_delta['delta'] = 0
 
                 cv2.imshow(window_name, display)
