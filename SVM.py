@@ -56,4 +56,4 @@ print(f"Testing  Accuracy: {testAcc:.4f}%")
 print("Difference:", trainAcc - testAcc)
 
 joblib.dump(SVCModel, "SVCModel.pkl")
-joblib.dump(scaler, "Scaler.pkl")
+joblib.dump(scaler, "SVCScaler.pkl")
