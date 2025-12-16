@@ -301,6 +301,14 @@ class MSIClassifier:
 
         scroll_pos = 0
         max_scroll = max(0, len(results) - 15)  # Show 15 results at a time
+        scroll_delta = 0
+
+        def mouse_callback(event, x, y, flags, param):
+            nonlocal scroll_delta
+            if event == cv2.EVENT_MOUSEWHEEL:
+                scroll_delta = -1 if flags > 0 else 1
+
+        cv2.setMouseCallback(window_name, mouse_callback)
 
         while True:
             frame = np.zeros((height, width, 3), dtype=np.uint8)
@@ -439,6 +447,9 @@ class MSIClassifier:
 
             cv2.putText(frame, "Controls: arrows or Mouse Wheel = Scroll | Q or ESC = Close",
                         (30, bar_y + 32), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+            if scroll_delta != 0:
+                scroll_pos = min(max_scroll, max(0, scroll_pos + scroll_delta))
+                scroll_delta = 0
 
             cv2.imshow(window_name, frame)
 
@@ -447,9 +458,9 @@ class MSIClassifier:
 
             if key == ord('q') or key == 27:
                 break
-            elif key == 82 or key == 0:  # Up arrow
+            elif key == 82:  # Up arrow
                 scroll_pos = max(0, scroll_pos - 1)
-            elif key == 84 or key == 1:  # Down arrow
+            elif key == 84:  # Down arrow
                 scroll_pos = min(max_scroll, scroll_pos + 1)
 
         cv2.destroyAllWindows()
@@ -489,6 +500,17 @@ class MSIClassifier:
         frame_count = 0
 
         try:
+            scroll_delta = {'delta': 0}
+
+            def mouse_callback(event, x, y, flags, param):
+                if event == cv2.EVENT_MOUSEWHEEL:
+                    if flags > 0:
+                        scroll_delta['delta'] = -1  # wheel up
+                    else:
+                        scroll_delta['delta'] = 1   # wheel down
+
+            cv2.setMouseCallback(window_name, mouse_callback)
+
             while True:
                 if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
                     print("\n[INFO] Window closed")
@@ -513,6 +535,15 @@ class MSIClassifier:
 
                 display = self.draw_ui(
                     frame, class_id, confidence, all_probs, fps)
+
+                # Apply mouse wheel scrolling
+                if scroll_delta['delta'] != 0:
+                    scroll_pos = min(
+                        max_scroll,
+                        max(0, scroll_pos + scroll_delta['delta'])
+                    )
+                    scroll_delta['delta'] = 0
+
                 cv2.imshow(window_name, display)
 
                 key = cv2.waitKey(1) & 0xFF
@@ -708,7 +739,7 @@ def show_menu(title, options, subtitle=""):
             cv2.destroyAllWindows()
             return selected_idx + 1
 
-        key = cv2.waitKey(50) & 0xFF
+        key = cv2.waitKey(50)
 
         # Arrow key navigation
         if key == 82 or key == 0:  # Up arrow
