@@ -23,13 +23,11 @@ class MSIClassifier:
         print(f"Loading {model_type} Model")
         print(f"{'='*60}")
 
-        # Verify files exist
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model not found: {model_path}")
         if not os.path.exists(scaler_path):
             raise FileNotFoundError(f"Scaler not found: {scaler_path}")
 
-        # Load model and scaler
         try:
             self.model = joblib.load(model_path)
             self.scaler = joblib.load(scaler_path)
@@ -38,7 +36,6 @@ class MSIClassifier:
         except Exception as e:
             raise RuntimeError(f"Failed to load model: {e}")
 
-        # Load ResNet50 feature extractor
         print("[...] Loading ResNet50 feature extractor...")
         try:
             resnet = models.resnet50(
@@ -60,7 +57,6 @@ class MSIClassifier:
         except Exception as e:
             raise RuntimeError(f"Failed to load feature extractor: {e}")
 
-        # Configuration
         self.threshold = 0.60
         self.class_names = [
             "Glass", "Paper", "Cardboard",
@@ -76,7 +72,6 @@ class MSIClassifier:
             6: (140, 140, 140)
         }
 
-        # Smoothing and metrics
         self.prediction_history = deque(maxlen=5)
         self.frame_times = deque(maxlen=30)
 
@@ -142,7 +137,6 @@ class MSIClassifier:
         material = self.class_names[class_id]
         color = self.class_colors[class_id]
 
-        # Main result card
         cv2.rectangle(overlay, (30, 30), (400, 160), color, 3)
 
         card_bg = np.zeros((130, 370, 3), dtype=np.uint8)
@@ -169,7 +163,6 @@ class MSIClassifier:
         cv2.putText(overlay, status, (50, 145),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, status_color, 2)
 
-        # Probabilities panel
         px, py = w - 310, 30
         cv2.rectangle(overlay, (px, py), (px + 280, py + 340), (80, 80, 80), 2)
 
@@ -205,7 +198,6 @@ class MSIClassifier:
                         (px + 220, bar_y + 8),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (180, 180, 180), 1)
 
-        # Bottom status bar
         bar_h = 45
         bar_y = h - bar_h
 
@@ -231,7 +223,7 @@ class MSIClassifier:
         return overlay
 
     def process_dataset(self, dataset_path):
-        """Process a hidden test dataset and display results in console"""
+        """Process a hidden test dataset and display results in GUI"""
 
         print(f"\n{'='*60}")
         print(f"PROCESSING DATASET: {dataset_path}")
@@ -284,42 +276,183 @@ class MSIClassifier:
                 print(f"[ERROR] Failed to process {img_path}: {e}")
                 continue
 
-        print(f"\n{'='*60}")
-        print(f"CLASSIFICATION RESULTS - {self.model_type}")
-        print(f"{'='*60}")
-        print(f"Total Images Processed: {total}")
-        print(f"Threshold Used: {self.threshold}")
-        print(f"\n{'='*60}")
-        print(f"{'Filename':<30} {'Predicted':<15} {'Confidence':<12}")
-        print(f"{'='*60}")
+        # Display results in GUI
+        self.display_results_gui(results, dataset_path)
 
-        for result in results:
-            print(f"{result['filename']:<30} "
-                  f"{result['class_name']:<15} "
-                  f"{result['confidence']*100:>6.2f}%")
+        return True
 
-        print(f"\n{'='*60}")
-        print(f"SUMMARY")
-        print(f"{'='*60}")
-        print(f"Model: {self.model_type}")
-        print(f"Total images: {total}")
-        print(f"Threshold: {self.threshold}")
+    def display_results_gui(self, results, dataset_path):
+        """Display dataset results in a scrollable GUI window"""
 
+        width, height = 1000, 700
+
+        # Calculate class distribution
         class_counts = {}
         for result in results:
             class_name = result['class_name']
             class_counts[class_name] = class_counts.get(class_name, 0) + 1
 
-        print(f"\nPredicted Class Distribution:")
-        for class_name in self.class_names:
-            count = class_counts.get(class_name, 0)
-            if count > 0:
-                print(
-                    f"  {class_name:<12}: {count:>4} ({count/total*100:>5.1f}%)")
+        total = len(results)
 
-        print(f"{'='*60}\n")
+        # Create scrollable results window
+        window_name = "Dataset Classification Results"
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(window_name, width, height)
 
-        return True
+        scroll_pos = 0
+        max_scroll = max(0, len(results) - 15)  # Show 15 results at a time
+
+        while True:
+            frame = np.zeros((height, width, 3), dtype=np.uint8)
+            frame[:] = (25, 25, 25)
+
+            # Header with gradient
+            title_height = 100
+            for i in range(title_height):
+                alpha = 1.0 - (i / title_height) * 0.5
+                color_val = int(40 * alpha)
+                frame[i, :] = (color_val, color_val, color_val)
+
+            # Title
+            cv2.putText(frame, "CLASSIFICATION RESULTS", (30, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255), 3)
+            cv2.putText(frame, f"Model: {self.model_type} | Total: {total} images",
+                        (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1)
+
+            # Separator
+            cv2.line(frame, (20, title_height), (width - 20, title_height),
+                     (80, 80, 80), 2)
+
+            # Summary panel
+            summary_y = title_height + 20
+            summary_height = 180
+
+            cv2.rectangle(frame, (30, summary_y), (width - 30, summary_y + summary_height),
+                          (40, 40, 40), -1)
+            cv2.rectangle(frame, (30, summary_y), (width - 30, summary_y + summary_height),
+                          (80, 80, 80), 2)
+
+            cv2.putText(frame, "CLASS DISTRIBUTION", (50, summary_y + 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+            # Display class distribution
+            col1_x, col2_x = 50, 500
+            row_y = summary_y + 65
+            row_spacing = 30
+
+            for idx, class_name in enumerate(self.class_names):
+                count = class_counts.get(class_name, 0)
+                percentage = (count / total * 100) if total > 0 else 0
+
+                x_pos = col1_x if idx < 4 else col2_x
+                y_pos = row_y + (idx % 4) * row_spacing
+
+                color = self.class_colors[idx]
+
+                # Color indicator
+                cv2.circle(frame, (x_pos + 10, y_pos - 5), 8, color, -1)
+                cv2.circle(frame, (x_pos + 10, y_pos - 5),
+                           8, (200, 200, 200), 1)
+
+                # Text
+                text = f"{class_name}: {count} ({percentage:.1f}%)"
+                cv2.putText(frame, text, (x_pos + 30, y_pos),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 220, 220), 1)
+
+            # Results table header
+            table_y = summary_y + summary_height + 30
+            cv2.putText(frame, "DETAILED RESULTS", (30, table_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+            # Table headers
+            header_y = table_y + 35
+            cv2.rectangle(frame, (30, header_y - 25), (width - 30, header_y + 5),
+                          (50, 50, 50), -1)
+
+            cv2.putText(frame, "Filename", (50, header_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+            cv2.putText(frame, "Predicted Class", (450, header_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+            cv2.putText(frame, "Confidence", (700, header_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+
+            # Display results (scrollable)
+            result_y = header_y + 25
+            row_height = 28
+
+            for idx in range(scroll_pos, min(scroll_pos + 15, len(results))):
+                result = results[idx]
+                y_pos = result_y + (idx - scroll_pos) * row_height
+
+                # Alternate row colors
+                if (idx - scroll_pos) % 2 == 0:
+                    cv2.rectangle(frame, (30, y_pos - 18), (width - 30, y_pos + 8),
+                                  (35, 35, 35), -1)
+
+                # Filename (truncated if too long)
+                filename = result['filename']
+                if len(filename) > 35:
+                    filename = filename[:32] + "..."
+                cv2.putText(frame, filename, (50, y_pos),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1)
+
+                # Class name with color indicator
+                class_id = result['predicted_class']
+                color = self.class_colors[class_id]
+                cv2.circle(frame, (450, y_pos - 5), 6, color, -1)
+                cv2.putText(frame, result['class_name'], (465, y_pos),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1)
+
+                # Confidence
+                conf_text = f"{result['confidence']*100:.1f}%"
+                cv2.putText(frame, conf_text, (700, y_pos),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1)
+
+            # Scroll indicator
+            if max_scroll > 0:
+                scroll_bar_height = 300
+                scroll_bar_y = header_y + 40
+                scroll_bar_x = width - 25
+
+                # Scroll track
+                cv2.rectangle(frame, (scroll_bar_x, scroll_bar_y),
+                              (scroll_bar_x + 10, scroll_bar_y + scroll_bar_height),
+                              (60, 60, 60), -1)
+
+                # Scroll thumb
+                thumb_height = max(
+                    20, int(scroll_bar_height * (15 / len(results))))
+                thumb_y = scroll_bar_y + \
+                    int((scroll_pos / max_scroll) *
+                        (scroll_bar_height - thumb_height))
+                cv2.rectangle(frame, (scroll_bar_x, thumb_y),
+                              (scroll_bar_x + 10, thumb_y + thumb_height),
+                              (120, 120, 120), -1)
+
+            # Bottom instruction bar
+            bar_height = 50
+            bar_y = height - bar_height
+
+            bar_bg = np.zeros((bar_height, width, 3), dtype=np.uint8)
+            bar_bg[:] = (15, 15, 15)
+            frame[bar_y:height, :] = bar_bg
+
+            cv2.putText(frame, "Controls: arrows or Mouse Wheel = Scroll | Q or ESC = Close",
+                        (30, bar_y + 32), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+
+            cv2.imshow(window_name, frame)
+
+            # Handle input
+            key = cv2.waitKey(50) & 0xFF
+
+            if key == ord('q') or key == 27:
+                break
+            elif key == 82 or key == 0:  # Up arrow
+                scroll_pos = max(0, scroll_pos - 1)
+            elif key == 84 or key == 1:  # Down arrow
+                scroll_pos = min(max_scroll, scroll_pos + 1)
+
+        cv2.destroyAllWindows()
 
     def run(self, camera_id=0):
         """Run real-time classification"""
@@ -431,91 +564,137 @@ class MSIClassifier:
         return True
 
 
-def draw_menu_window(title, options, subtitle=""):
-    """Create a graphical menu window matching the live camera UI style"""
+def draw_menu_window(title, options, subtitle="", selected_idx=0):
+    """Create a graphical menu window with consistent styling"""
 
-    # Window dimensions
-    width, height = 800, 600
+    width, height = 900, 650
     menu_frame = np.zeros((height, width, 3), dtype=np.uint8)
     menu_frame[:] = (25, 25, 25)
 
-    # Title area with gradient effect
-    title_height = 100
+    # Title area with gradient
+    title_height = 120
     for i in range(title_height):
         alpha = 1.0 - (i / title_height) * 0.5
         color_val = int(40 * alpha)
         menu_frame[i, :] = (color_val, color_val, color_val)
 
     # Draw title
-    cv2.putText(menu_frame, title, (50, 55),
+    cv2.putText(menu_frame, title, (50, 60),
                 cv2.FONT_HERSHEY_SIMPLEX, 1.8, (255, 255, 255), 3)
 
     if subtitle:
-        cv2.putText(menu_frame, subtitle, (50, 85),
+        cv2.putText(menu_frame, subtitle, (50, 95),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1)
 
-    # Draw separator line
-    cv2.line(menu_frame, (30, title_height + 10),
-             (width - 30, title_height + 10), (80, 80, 80), 2)
+    # Separator line
+    cv2.line(menu_frame, (30, title_height), (width - 30, title_height),
+             (80, 80, 80), 2)
 
     # Draw menu options
     start_y = title_height + 80
-    spacing = 90
+    spacing = 110
 
     for idx, option in enumerate(options):
         y_pos = start_y + idx * spacing
 
-        # Option card background
-        card_x1, card_y1 = 50, y_pos - 45
-        card_x2, card_y2 = width - 50, y_pos + 30
+        # Option card
+        card_x1, card_y1 = 50, y_pos - 50
+        card_x2, card_y2 = width - 50, y_pos + 35
 
-        # Draw card with border
+        # Highlight selected option
+        if idx == selected_idx:
+            border_color = (80, 160, 255)
+            bg_color = (45, 45, 45)
+            border_thickness = 3
+        else:
+            border_color = (100, 100, 100)
+            bg_color = (35, 35, 35)
+            border_thickness = 2
+
+        # Draw card
         cv2.rectangle(menu_frame, (card_x1, card_y1), (card_x2, card_y2),
-                      (60, 60, 60), -1)
+                      bg_color, -1)
         cv2.rectangle(menu_frame, (card_x1, card_y1), (card_x2, card_y2),
-                      (100, 100, 100), 2)
+                      border_color, border_thickness)
 
         # Number badge
-        badge_size = 40
-        badge_x = card_x1 + 20
-        badge_y = y_pos - 20
+        badge_size = 45
+        badge_x = card_x1 + 35
+        badge_y = y_pos - 15
+
+        badge_color = (80, 160, 255) if idx == selected_idx else (60, 60, 60)
         cv2.circle(menu_frame, (badge_x, badge_y), badge_size // 2,
-                   (80, 160, 255), -1)
+                   badge_color, -1)
         cv2.circle(menu_frame, (badge_x, badge_y), badge_size // 2,
-                   (120, 180, 255), 2)
+                   (120, 180, 255) if idx == selected_idx else (100, 100, 100), 2)
 
         # Number text
-        cv2.putText(menu_frame, str(idx + 1), (badge_x - 12, badge_y + 12),
+        num_text = str(idx + 1)
+        text_size = cv2.getTextSize(
+            num_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
+        num_x = badge_x - text_size[0] // 2
+        num_y = badge_y + text_size[1] // 2
+
+        cv2.putText(menu_frame, num_text, (num_x, num_y),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
 
         # Option text
+        text_color = (255, 255, 255) if idx == selected_idx else (
+            220, 220, 220)
         cv2.putText(menu_frame, option, (badge_x + 50, y_pos),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (240, 240, 240), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.85, text_color, 2)
 
     # Bottom instruction bar
-    bar_height = 50
+    bar_height = 60
     bar_y = height - bar_height
 
     bar_bg = np.zeros((bar_height, width, 3), dtype=np.uint8)
     bar_bg[:] = (15, 15, 15)
     menu_frame[bar_y:height, :] = bar_bg
 
-    cv2.putText(menu_frame, "Press the number key to select an option",
-                (50, bar_y + 32), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+    cv2.putText(menu_frame, "Controls: arrows or Mouse Wheel = Scroll | Enter or Click = Select | Q or ESC = Exit",
+                (30, bar_y + 37), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1)
 
     return menu_frame
 
 
 def show_menu(title, options, subtitle=""):
-    """Display menu and get user selection"""
+    """Display menu with mouse and keyboard navigation"""
 
     window_name = "MSI System - Menu"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(window_name, 800, 600)
+    cv2.resizeWindow(window_name, 900, 650)
 
-    menu_frame = draw_menu_window(title, options, subtitle)
+    selected_idx = 0
+    mouse_y = 0
+
+    def mouse_callback(event, x, y, flags, param):
+        nonlocal selected_idx, mouse_y
+        mouse_y = y
+
+        # Calculate which option is being hovered
+        title_height = 120
+        start_y = title_height + 80
+        spacing = 110
+
+        for idx in range(len(options)):
+            option_y = start_y + idx * spacing
+            card_y1 = option_y - 50
+            card_y2 = option_y + 35
+
+            if card_y1 <= y <= card_y2:
+                selected_idx = idx
+                break
+
+        # Handle mouse click
+        if event == cv2.EVENT_LBUTTONDOWN:
+            param['clicked'] = True
+
+    click_data = {'clicked': False}
+    cv2.setMouseCallback(window_name, mouse_callback, click_data)
 
     while True:
+        menu_frame = draw_menu_window(title, options, subtitle, selected_idx)
         cv2.imshow(window_name, menu_frame)
 
         # Check if window was closed
@@ -523,17 +702,34 @@ def show_menu(title, options, subtitle=""):
             cv2.destroyAllWindows()
             return None
 
-        key = cv2.waitKey(100) & 0xFF
+        # Check for mouse click
+        if click_data['clicked']:
+            click_data['clicked'] = False
+            cv2.destroyAllWindows()
+            return selected_idx + 1
 
-        # Check for number keys
-        if key >= ord('1') and key <= ord('9'):
+        key = cv2.waitKey(50) & 0xFF
+
+        # Arrow key navigation
+        if key == 82 or key == 0:  # Up arrow
+            selected_idx = (selected_idx - 1) % len(options)
+        elif key == 84 or key == 1:  # Down arrow
+            selected_idx = (selected_idx + 1) % len(options)
+
+        # Enter key to select
+        elif key == 13 or key == 10:  # Enter
+            cv2.destroyAllWindows()
+            return selected_idx + 1
+
+        # Number keys
+        elif key >= ord('1') and key <= ord('9'):
             choice = key - ord('0')
             if choice <= len(options):
                 cv2.destroyAllWindows()
                 return choice
 
         # ESC or Q to exit
-        if key == 27 or key == ord('q'):
+        elif key == 27 or key == ord('q'):
             cv2.destroyAllWindows()
             return None
 
@@ -636,14 +832,8 @@ def main():
 
                     print(f"[INFO] Selected: {dataset_path}")
 
-                    # Process dataset
-                    success = classifier.process_dataset(dataset_path)
-
-                    if success:
-                        input("\nPress Enter to continue...")
-                    else:
-                        print("\n[ERROR] Dataset processing failed")
-                        input("Press Enter to continue...")
+                    # Process dataset (results shown in GUI)
+                    classifier.process_dataset(dataset_path)
 
             except FileNotFoundError as e:
                 print(f"\n[ERROR] {e}")
