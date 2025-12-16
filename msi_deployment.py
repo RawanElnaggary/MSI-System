@@ -300,7 +300,7 @@ class MSIClassifier:
         cv2.resizeWindow(window_name, width, height)
 
         scroll_pos = 0
-        max_scroll = max(0, len(results) - 15)  # Show 15 results at a time
+        max_scroll = max(0, len(results))
         scroll_delta = 0
 
         def mouse_callback(event, x, y, flags, param):
