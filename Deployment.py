@@ -347,7 +347,7 @@ class MSIClassifier:
         # Map class names to indices (MUST match training order - alphabetical)
         class_name_to_idx = {}
         idx = 0
-        for class_name in sorted(["Cardboard", "Glass", "Metal", "Paper", "Plastic", "Trash"]):
+        for class_name in sorted(["Cardboard", "Glass", "Metal", "Paper", "Plastic", "Trash", "Unknown"]):
             class_name_to_idx[class_name] = idx
             idx += 1
 
@@ -400,8 +400,8 @@ class MSIClassifier:
                 img_name = os.path.basename(img_path)
                 true_label = ground_truth_labels[idx]
 
-                # Count correct predictions (excluding "Unknown" class)
-                if class_id != 6 and true_label != -1:
+                # Count correct predictions
+                if true_label != -1:
                     total_predictions += 1
                     if class_id == true_label:
                         correct_predictions += 1
@@ -413,7 +413,7 @@ class MSIClassifier:
                     'confidence': confidence,
                     'true_label': true_label,
                     'true_class_name': self.class_names[true_label] if true_label != -1 else "Unknown",
-                    'correct': (class_id == true_label) and (class_id != 6)
+                    'correct': (class_id == true_label)
                 })
 
                 if (idx + 1) % 10 == 0 or (idx + 1) == len(image_files):
@@ -652,20 +652,16 @@ class MSIClassifier:
             cv2.putText(frame, "CLASS DISTRIBUTION", (50, dist_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
 
-            # Display class distribution
-            col1_x, col2_x = 50, 500
+            col1_x, col2_x = 50, 520
             row_y = dist_y + 25
             row_spacing = 27
 
             for idx, class_name in enumerate(self.class_names):
-                if class_name == "Unknown":
-                    continue
-
                 count = class_counts.get(class_name, 0)
                 percentage = (count / total * 100) if total > 0 else 0
 
-                x_pos = col1_x if idx < 3 else col2_x
-                y_pos = row_y + (idx % 3) * row_spacing
+                x_pos = col1_x if idx < 4 else col2_x
+                y_pos = row_y + (idx % 4) * row_spacing
 
                 color = self.class_colors[idx]
 
@@ -674,10 +670,10 @@ class MSIClassifier:
                 cv2.circle(frame, (x_pos + 10, y_pos - 5),
                            6, (200, 200, 200), 1)
 
-                # Text
+                # Text - shorten the display format
                 text = f"{class_name}: {count} ({percentage:.1f}%)"
                 cv2.putText(frame, text, (x_pos + 25, y_pos),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (220, 220, 220), 1)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.43, (220, 220, 220), 1)
 
             # Results table header
             table_y = summary_y + summary_height + 20
@@ -691,13 +687,13 @@ class MSIClassifier:
 
             cv2.putText(frame, "Filename", (50, header_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
-            cv2.putText(frame, "True", (350, header_y),
+            cv2.putText(frame, "True", (320, header_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
-            cv2.putText(frame, "Predicted", (500, header_y),
+            cv2.putText(frame, "Predicted", (480, header_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
-            cv2.putText(frame, "Conf.", (680, header_y),
+            cv2.putText(frame, "Conf.", (640, header_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
-            cv2.putText(frame, "Result", (780, header_y),
+            cv2.putText(frame, "Result", (730, header_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
 
             # Display results (scrollable)
@@ -724,53 +720,40 @@ class MSIClassifier:
                 true_label = result.get('true_label', -1)
                 if true_label != -1:
                     true_color = self.class_colors[true_label]
-                    cv2.circle(frame, (350, y_pos - 5), 5, true_color, -1)
+                    cv2.circle(frame, (320, y_pos - 5), 5, true_color, -1)
                     true_name = result.get('true_class_name', 'Unknown')
-                    if len(true_name) > 8:
-                        true_name = true_name[:7] + "."
-                    cv2.putText(frame, true_name, (365, y_pos),
+                    # No truncation
+                    cv2.putText(frame, true_name, (335, y_pos),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.4, (220, 220, 220), 1)
 
                 # Predicted class with color indicator
                 class_id = result['predicted_class']
                 color = self.class_colors[class_id]
-                cv2.circle(frame, (500, y_pos - 5), 5, color, -1)
+                cv2.circle(frame, (480, y_pos - 5), 5, color, -1)
                 pred_name = result['class_name']
-                if len(pred_name) > 8:
-                    pred_name = pred_name[:7] + "."
-                cv2.putText(frame, pred_name, (515, y_pos),
+                cv2.putText(frame, pred_name, (495, y_pos),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (220, 220, 220), 1)
 
                 # Confidence
                 conf_text = f"{result['confidence']*100:.0f}%"
-                cv2.putText(frame, conf_text, (680, y_pos),
+                cv2.putText(frame, conf_text, (640, y_pos),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (220, 220, 220), 1)
 
-                # Result (colored circles)
-                # Result - Better visual indicators
+                # Result indicators
                 if result.get('correct', False):
-                    # Green filled circle with checkmark
-                    cv2.circle(frame, (795, y_pos - 5), 8,
-                               (100, 255, 100), -1)  # Green fill
-                    cv2.circle(frame, (795, y_pos - 5), 8,
-                               (150, 255, 150), 1)   # Light green border
-                    # Mini checkmark
-                    cv2.line(frame, (791, y_pos - 4),
-                             (793, y_pos - 1), (40, 40, 40), 2)
-                    cv2.line(frame, (793, y_pos - 1),
-                             (799, y_pos - 9), (40, 40, 40), 2)
-
-                elif true_label != -1 and class_id != 6:
-                    # Red filled circle with X
-                    cv2.circle(frame, (795, y_pos - 5), 8,
-                               (60, 60, 240), -1)    # Red fill (BGR)
-                    cv2.circle(frame, (795, y_pos - 5), 8,
-                               (100, 100, 255), 1)   # Light red border
-                    # X mark
-                    cv2.line(frame, (791, y_pos - 9),
-                             (799, y_pos - 1), (30, 30, 30), 2)
-                    cv2.line(frame, (799, y_pos - 9),
-                             (791, y_pos - 1), (30, 30, 30), 2)
+                    cv2.circle(frame, (745, y_pos - 5), 8, (100, 255, 100), -1)
+                    cv2.circle(frame, (745, y_pos - 5), 8, (150, 255, 150), 1)
+                    cv2.line(frame, (741, y_pos - 4),
+                             (743, y_pos - 1), (40, 40, 40), 2)
+                    cv2.line(frame, (743, y_pos - 1),
+                             (749, y_pos - 9), (40, 40, 40), 2)
+                elif true_label != -1:
+                    cv2.circle(frame, (745, y_pos - 5), 8, (60, 60, 240), -1)
+                    cv2.circle(frame, (745, y_pos - 5), 8, (100, 100, 255), 1)
+                    cv2.line(frame, (741, y_pos - 9),
+                             (749, y_pos - 1), (30, 30, 30), 2)
+                    cv2.line(frame, (749, y_pos - 9),
+                             (741, y_pos - 1), (30, 30, 30), 2)
 
             # Scroll indicator
             if max_scroll > 0:
