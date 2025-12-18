@@ -13,31 +13,31 @@ YTest = np.load("TestingYLabels.npy")
 
 # Scale Features
 scaler = StandardScaler()
-XTrainScaled = scaler.fit_transform(XTrain)# fit calculates mean and std dev then transforms each feature
-XTestScaled = scaler.transform(XTest) # uses the mean and std dev from training to transform test set
+XTrainScaled = scaler.fit_transform(XTrain) # Fit calculates mean and std dev then transforms each feature
+XTestScaled = scaler.transform(XTest) # Uses the mean and std dev from training to transform test set
 
 # Rejection Threshold
 THRESHOLD = 0.50
 
 def predict_with_rejection (model, X, threshold):
-    probs = model.predict_proba(X) # calculates probabilities for each sample picture the sum of the row is 1 
-    maxProb = probs.max(axis = 1)# find maxes in each row
-    preds = model.predict(X)# get the predicted classes for each sample
+    probs = model.predict_proba(X) # Calculate probabilities for each sample picture the sum of the row is 1
+    maxProb = probs.max(axis = 1) # Find maxes in each row
+    preds = model.predict(X) # Get the predicted classes for each sample
+
     finalPreds = []
-    for p, conf in zip(preds, maxProb): # iterate through predicted classes and their corresponding max probabilities
+    for p, conf in zip(preds, maxProb): # Iterate through predicted classes and their corresponding max probabilities
         if conf < threshold:
             finalPreds.append(-1)     
         else:
             finalPreds.append(p)
+
     return np.array(finalPreds)
-
-
 
 # Train SVC Model
 SVCModel = SVC (
-    kernel = 'rbf',#radial basis function kernel
+    kernel = 'rbf', # Radial basis function kernel
     C = 0.9,
-    gamma = 'scale', #مدى الدقه
+    gamma = 'scale', # Accuracy scale
     probability = True,
     random_state = 42
 )
@@ -55,5 +55,5 @@ print(f"Training Accuracy: {trainAcc:.4f}%")
 print(f"Testing  Accuracy: {testAcc:.4f}%")
 print("Difference:", trainAcc - testAcc)
 
-# joblib.dump(SVCModel, "SVCModel.pkl")
-# joblib.dump(scaler, "SVCScaler.pkl")
+joblib.dump(SVCModel, "SVCModel.pkl")
+joblib.dump(scaler, "SVCScaler.pkl")

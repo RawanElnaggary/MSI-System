@@ -565,7 +565,7 @@ class MSIClassifier:
         cv2.resizeWindow(window_name, width, height)
 
         scroll_pos = 0
-        max_scroll = max(0, len(results) - 12)
+        max_scroll = max(0, len(results) - 7)
         scroll_delta = 0
 
         def mouse_callback(event, x, y, flags, param):
@@ -603,7 +603,7 @@ class MSIClassifier:
 
             # Summary panel
             summary_y = title_height + 20
-            summary_height = 220
+            summary_height = 260
 
             cv2.rectangle(frame, (30, summary_y), (width - 30, summary_y + summary_height),
                           (40, 40, 40), -1)
@@ -644,17 +644,17 @@ class MSIClassifier:
                               (120, 120, 120), 2)
 
                 # Separator line
-                cv2.line(frame, (40, summary_y + 95), (width - 40, summary_y + 95),
+                cv2.line(frame, (40, summary_y + 105), (width - 40, summary_y + 105),
                          (80, 80, 80), 1)
 
             # Class distribution
-            dist_y = summary_y + 110
+            dist_y = summary_y + 130
             cv2.putText(frame, "CLASS DISTRIBUTION", (50, dist_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
 
             col1_x, col2_x = 50, 520
             row_y = dist_y + 25
-            row_spacing = 27
+            row_spacing = 30
 
             for idx, class_name in enumerate(self.class_names):
                 count = class_counts.get(class_name, 0)
@@ -676,24 +676,25 @@ class MSIClassifier:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.43, (220, 220, 220), 1)
 
             # Results table header
-            table_y = summary_y + summary_height + 20
+            table_y = summary_y + summary_height + 30
             cv2.putText(frame, "DETAILED RESULTS", (30, table_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
             # Table headers
-            header_y = table_y + 30
+            header_y = table_y + 35
             cv2.rectangle(frame, (30, header_y - 20), (width - 30, header_y + 5),
                           (50, 50, 50), -1)
 
-            cv2.putText(frame, "Filename", (50, header_y),
+            text_y = header_y - 4
+            cv2.putText(frame, "Filename", (50, text_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
-            cv2.putText(frame, "True", (320, header_y),
+            cv2.putText(frame, "True", (320, text_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
-            cv2.putText(frame, "Predicted", (480, header_y),
+            cv2.putText(frame, "Predicted", (480, text_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
-            cv2.putText(frame, "Conf.", (640, header_y),
+            cv2.putText(frame, "Conf.", (640, text_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
-            cv2.putText(frame, "Result", (730, header_y),
+            cv2.putText(frame, "Result", (730, text_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
 
             # Display results (scrollable)

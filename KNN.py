@@ -53,5 +53,5 @@ print(f"Training Accuracy: {trainAcc:.4f}%")
 print(f"Testing  Accuracy: {testAcc:.4f}%")
 print("Difference:", trainAcc - testAcc)
 
-# joblib.dump(KNNModel, "KNNModel.pkl")
-# joblib.dump(scaler, "KNNScaler.pkl")
+joblib.dump(KNNModel, "KNNModel.pkl")
+joblib.dump(scaler, "KNNScaler.pkl")
