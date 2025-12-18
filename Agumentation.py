@@ -6,6 +6,7 @@ import random
 from keras_preprocessing.image import ImageDataGenerator
 from keras_preprocessing.image import img_to_array, load_img
 
+
 # To get the needed augmented images per class
 def round_up (n):
     if n < 10:
@@ -24,6 +25,7 @@ os.mkdir(finalDataset)
 
 # To store the number of good images in each folder
 foldersImgsCount = {}
+
 
 # Loop through the initial folder to copy uncorrupted images to the final folder
 for folder in os.listdir(initialDataset):
@@ -49,6 +51,7 @@ for folder in os.listdir(initialDataset):
             continue
 
     foldersImgsCount[folder] = imgsCount
+
 
 # To calculate the needed images in each folder later
 totalTrainingImgs = 0
@@ -76,6 +79,7 @@ for folder in os.listdir(finalDataset):
             continue
         shutil.move(imgPath, testFolder)
 
+
 # Get the number of images needed in each training folder
 totalTrainingImgsNeeded = totalTrainingImgs + math.ceil(totalTrainingImgs * 0.4) # Target is at least 40% more
 imgsPerClass = math.ceil(totalTrainingImgsNeeded / len(foldersImgsCount))
@@ -84,6 +88,7 @@ if max(foldersImgsCount.values()) > imgsPerClass:
     targetCount = round_up(max(foldersImgsCount.values()))
 else:
     targetCount = round_up(imgsPerClass)
+
 
 # Keras augmentation settings
 imgAug = ImageDataGenerator (
@@ -97,6 +102,7 @@ imgAug = ImageDataGenerator (
     shear_range = 0.15,
     fill_mode = "nearest"
 )
+
 
 # Apply augmentation for each training folder till it reaches the maximum size needed
 for folder in os.listdir(finalDataset):

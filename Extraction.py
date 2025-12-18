@@ -6,6 +6,7 @@ import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as transforms
 
+
 # Load the ResNet50 model
 resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
 resnet.eval() # Put the model in evaluation mode (only extracting features)
@@ -18,11 +19,12 @@ featureExtractor = nn.Sequential (
 preprocess = transforms.Compose ([
     transforms.Resize((224, 224)), # ResNet50 expects
     transforms.ToTensor(), # Convert the image into PyTorch tensor (multidimensional array for calculations)
-    transforms.Normalize(
+    transforms.Normalize (
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225]
     ) # Standardize the color values
 ])
+
 
 def extract_resnet_features (img_path):
     img = Image.open(img_path).convert("RGB")
@@ -30,6 +32,7 @@ def extract_resnet_features (img_path):
     with torch.no_grad(): # No gradient calculation
         features = featureExtractor(img).numpy().squeeze() # Convert to numpy array and remove the batch dimension
     return features # 1D vector
+
 
 def load_dataset (path, split):
     X, y = [], []
@@ -49,6 +52,7 @@ def load_dataset (path, split):
                 pass
 
     return np.array(X), np.array(y)
+
 
 if __name__ == "__main__":
     datasetPath = "FinalDataset"

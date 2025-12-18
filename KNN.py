@@ -4,6 +4,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score
 import joblib
 
+
 # Load Features
 XTrain = np.load("TrainingXFeatures.npy")
 XTest = np.load("TestingXFeatures.npy")
@@ -15,6 +16,7 @@ YTest  = np.load("TestingYLabels.npy")
 scaler = Normalizer(norm='l2')
 XTrainScaled = scaler.fit_transform(XTrain)
 XTestScaled  = scaler.transform(XTest)
+
 
 # Rejection Threshold
 THRESHOLD = 0.40
@@ -32,6 +34,7 @@ def predict_with_rejection (model, X, threshold):
             finalPreds.append(p)
 
     return np.array(finalPreds)
+
 
 # Train KNN Model
 KNNModel = KNeighborsClassifier (

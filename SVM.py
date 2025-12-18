@@ -4,6 +4,7 @@ from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score
 import joblib
 
+
 # Load Features
 XTrain = np.load("TrainingXFeatures.npy")
 XTest = np.load("TestingXFeatures.npy")
@@ -15,6 +16,7 @@ YTest = np.load("TestingYLabels.npy")
 scaler = StandardScaler()
 XTrainScaled = scaler.fit_transform(XTrain) # Fit calculates mean and std dev then transforms each feature
 XTestScaled = scaler.transform(XTest) # Uses the mean and std dev from training to transform test set
+
 
 # Rejection Threshold
 THRESHOLD = 0.50
@@ -32,6 +34,7 @@ def predict_with_rejection (model, X, threshold):
             finalPreds.append(p)
 
     return np.array(finalPreds)
+
 
 # Train SVC Model
 SVCModel = SVC (

@@ -9,43 +9,33 @@ from PIL import Image
 
 
 def predict(dataFilePath, bestModelPath):
-    """
-    Args:
-        dataFilePath (str): Path to folder containing images
-        bestModelPath (str): Path to trained SVC model (.pkl)
-
-    Returns:
-        list: Predictions
-    """
-
- 
-    resnet = models.resnet50(
-        weights=models.ResNet50_Weights.IMAGENET1K_V1
-    )
+    resnet = models.resnet50 (weights=models.ResNet50_Weights.IMAGENET1K_V1)
     resnet.eval()
 
-    featureExtractor = nn.Sequential(
+    featureExtractor = nn.Sequential (
         *list(resnet.children())[:-1],
         nn.Flatten()
     )
 
-    preprocess = transforms.Compose([
+    preprocess = transforms.Compose ([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(
+        transforms.Normalize (
             mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225]
         )
     ])
 
-   
     model = joblib.load(bestModelPath)
     scaler = joblib.load("SVCScaler.pkl")
 
     THRESHOLD = 0.50
     predictions = []
 
-   
+    # Map the classes to their real IDs, as their current IDs are them sorted alphabetically
+    # Cardboard -> 0, Glass -> 1, Metal -> 2, Paper -> 3, Plastic -> 4, Trash -> 5
+    classesIDs = {0 : 2, 1 : 0, 2 : 4, 3 : 1, 4 : 3, 5 : 5}
+
     for img_name in sorted(os.listdir(dataFilePath)):
         img_path = os.path.join(dataFilePath, img_name)
 
@@ -57,7 +47,6 @@ def predict(dataFilePath, bestModelPath):
             # Feature extraction
             with torch.no_grad():
                 features = featureExtractor(img).numpy().squeeze()
-
             features = np.array(features).reshape(1, -1)
 
             # Scale features
@@ -69,14 +58,15 @@ def predict(dataFilePath, bestModelPath):
             pred = model.predict(features_scaled)[0]
 
             if max_prob < THRESHOLD:
-                predictions.append(-1)
+                predictions.append(6)
             else:
-                predictions.append(int(pred))
+                predictions.append(classesIDs[int(pred)])
 
         except Exception:
-            predictions.append(-1)
+            predictions.append(6)
 
     return predictions
 
-preds = predict("D:\\Ahmed\\FourthYear\\FirstTerm\\Machine_Learning\\Assignment\\dataset\\paper", "SVCModel.pkl")
+
+preds = predict("DataFile", "SVCModel.pkl")
 print(preds)
